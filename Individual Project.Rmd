@@ -1,0 +1,110 @@
+---
+title: "Fenstermaker Individual Project"
+author: Matthew Fenstermaker
+output: html_notebook
+---
+
+**Load in Libraries**
+
+```{r echo = T}
+library(tswge)
+```
+
+**Read in Data**
+
+```{r echo = T}
+data = read.csv("tourismData.csv")
+```
+
+**Create the TS from data**
+
+```{r echo = T}
+data.ts <- ts(data$x, start = c(1985,1), end = c(2004, 12), frequency = 12)
+```
+
+**Create Plots for new T-series**
+
+```{r echo = T}
+plot(data.ts)
+acf(data.ts)
+parzen.wge(data.ts)
+```
+**Comments about the plots for the data**
+
+***The graph seems to have increasing variability going towards 1997-1998 where it sees a sharp peak then goes back down to the original increase in variability. It is worth noting how the graph shows a large dip around the 2003-2004 range.***
+
+***The ACF shows that the data does not have a lot of movement, and that the ACF never goes under 0 and all lag values are significant, meaning that there is a possibility for a seasonal aspect to this data.***
+
+***Looking at the Parzen graph, it seems to have peaks at 0, .1667, .25, and even a smaller one around .5. This can show possible values for a seasonal aspect of this graph.***
+
+*Create Holt Winters Forecast*
+
+**I chose multiplicative because the variability is increasing over time for the majority. I also chose n.ahead = 84 since the greater the n.ahead, the less accurate the forecast will be to an extended model. I will also be choosing to forecast ahead 7 years since that is how I will use the training and validation set later on.**
+
+```{r echo = T}
+HW = HoltWinters(data.ts,seasonal="multiplicative")
+HW.pred = predict(HW,n.ahead=48)
+plot(HW,HW.pred)
+```
+*Forecasting with an ARMA model*
+
+**Finding the best values for p and q**
+
+```{r echo = T}
+ARMA = aic.wge(data.ts,p=0:18,q=0:8,type="aic")
+ARMA
+```
+
+**The best predicting model is found to be ARMA(11,8) with a formula of:**
+
+$(1 -0.2589B +0.2195B^2 +0.3257B^3 -0.3144B^4 -0.3240B^5 -0.1207B^6 -0.1536B^7 -0.6270B^8 +0.5431B^9 -0.1108B^{10} -0.0941B^{11})(X_t - 17071.53) = (1+0.4374B +0.6895B^2 +0.7745B^3 +0.3420B^4 -0.2018B^5 -0.2014B^6 -0.0172B^7 -0.7708B^8)a_t$
+
+**Finding the factors for the newfound model**
+
+```{r echo = T}
+est.arma.wge(data.ts,p=11,q=8)
+```
+**Using the ARMA(11,8) model to compare against the original data set**
+
+```{r echo = T}
+fore11.8= fore.arma.wge(data.ts,phi= ARMA$phi,theta= ARMA$theta,n.ahead= 48,limits= FALSE)
+abline(h=mean(data.ts))
+```
+**It is apparent that the forecasted graph holds the same trend, but is showing that it is decreasing instead of the trend of increasing over time. It looks as if the forecast is trying to come closer to the mean while still maintaining the basic trend shape.**
+
+*Forecast from a Seasonal Model*
+
+```{r echo=T}
+dataFit = est.ar.wge(data.ts,p=16,method="burg")
+```
+
+***The data seems to fit that of a $(1-B)^12$ model. Let's create a difference of the data and look at what particularly it looks like.***
+
+```{r echo = T}
+data.diff=artrans.wge(data.ts,phi.tr = c(rep(0,11),1),plot=F)
+plot(data.diff,type="l",xlab="Time",ylab="")
+acf(data.diff)
+parzen.wge(data.diff)
+```
+***The observed  graphs allow us to make an assumption that the differenced seasoned graphs are in fact stationary, so we can fit an ARMA(p,q) model based off this.***
+
+```{r}
+ARMA2 = aic.wge(data.diff,p=0:18,q=0:8)
+ARMA
+est.arma.wge(data.diff,p=15,q=4)
+```
+**The best predicting model is found to be:**
+
+$(1+0.5092B-0.0080B^2+0.1274B^3+0.0869B^4-0.3502B^5-0.1424B^6-0.1991B^7-0.1458B^8-0.0247B^9-0.1539B^{10}-0.0611B^{11}+0.5749B^{12}+0.3583B^{13}+0.0741B^{14}+0.0203B^{15})(X_t-984.7632)=(1+1.2028B+0.9517B^2+0.9016B^3+0.7428B^4)a_t$
+
+**which is ARMA(15,4)**
+
+**Using the ARMA(15,4) model to compare against the seasonally differenced data**
+
+```{r echo = T}
+fore15.4= fore.arma.wge(data.diff,phi= ARMA2$phi,theta= ARMA2$theta,n.ahead= 48,limits= FALSE)
+abline(h=mean(data.diff))
+```
+
+
+
